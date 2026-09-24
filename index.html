@@ -58,13 +58,35 @@
       else if(nums){let y=Number(nums[3]||new Date().getFullYear());if(y<100)y+=2000;d=new Date(Date.UTC(y,Number(nums[1])-1,Number(nums[2])));match=nums[0]}
       return !d||Number.isNaN(d.getTime())?null:{iso:d.toISOString().slice(0,10),match:match};
     }
-    function kind(line){const v=line.toLowerCase();if(/\bfinals?\b/.test(v))return'final';if(/\b(midterm|exam|test)\b/.test(v))return'exam';if(/\b(project|paper|capstone)\b/.test(v))return'project';if(/\b(presentation|present)\b/.test(v))return'presentation';return null}
+    function kind(line){
+      const v=line.toLowerCase();
+      if(/\b(discuss|discussion|review|practice)\b/.test(v)&&/\b(final|exam|test)\b/.test(v))return null;
+      if(/\b(presentation|presentations?)\b/.test(v))return'presentation';
+      if(/\bfinals?\b/.test(v))return'final';
+      if(/\b(midterm|exam|test)\b/.test(v))return'exam';
+      if(/\b(?:major|final)\s+(?:project|paper)|\b(?:project|paper|capstone)\s+(?:due|proposal)\b/.test(v))return'project';
+      return null;
+    }
     function titleFor(line,category){
-      const patterns={exam:/\b(?:midterm|exam|test)(?:\s*(?:#|no\.?)?\s*\d+)?\b/i,final:/\bfinal(?:\s+exam)?\b/i,project:/\b(?:(?:group|final|major)\s+)?(?:project|paper|capstone)(?:\s+(?:due|proposal))?\b/i,presentation:/\b(?:group\s+)?presentation\b/i};
+      const patterns={exam:/\b(?:midterm|exam|test)(?:\s*(?:#|no\.?)?\s*\d+)?\b/i,final:/\b(?:remote\s+)?final(?:\s+exam)?\b/i,project:/\b(?:(?:group|final|major)\s+)?(?:project|paper|capstone)(?:\s+(?:due|proposal))?\b/i,presentation:/\b(?:group\s+project\s+)?presentations?\b/i};
       const match=line.match(patterns[category]);
       return (match?match[0]:'Important date').replace(/\s+/g,' ').trim();
     }
-    function parse(text,source,allowed){let course=source.replace(/\.pdf$/i,'')||'Uploaded syllabus',out=[];const lines=text.replace(/\s+(?=(?:midterm|final|exam|test|project|presentation)\b)/gi,'\n').split(/\r?\n/);for(const raw of lines){const line=raw.replace(/\s+/g,' ').trim(),cm=line.match(/\b[A-Z]{2,5}\s?-?\d{3,4}\b/);if(cm)course=cm[0].replace(/\s?-/g,' ');const category=kind(line),date=dateIn(line);if(!category||!date||!allowed.includes(category))continue;out.push({id:newid(),course:course,title:titleFor(line,category),date:date.iso,category:category,source:source,selected:false})}return out}
+    function parse(text,source,allowed){
+      let course=source.replace(/\.pdf$/i,'')||'Uploaded syllabus',out=[],lastScheduleDate=null;
+      const lines=text.split(/\r?\n/);
+      for(const raw of lines){
+        const line=raw.replace(/\s+/g,' ').trim(),cm=line.match(/\b[A-Z]{2,5}\s?-?\d{3,4}\b/),date=dateIn(line);
+        if(cm)course=cm[0].replace(/\s?-/g,' ');
+        if(/^(?:\d+|-)\s+\d{1,2}\s*[/-]\s*\d{1,2}\b/.test(line)&&date)lastScheduleDate=date;
+        const category=kind(line),title=category?titleFor(line,category):'',eventDate=date||lastScheduleDate;
+        if(!category||!eventDate||!allowed.includes(category))continue;
+        const normalize=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+        if(!date&&normalize(line)!==normalize(title))continue;
+        out.push({id:newid(),course:course,title:title,date:eventDate.iso,category:category,source:source,selected:false});
+      }
+      return out;
+    }
     function merge(incoming){const keys=new Set(state.events.map(e=>(e.course+'|'+e.title+'|'+e.date).toLowerCase())),fresh=incoming.filter(e=>{const k=(e.course+'|'+e.title+'|'+e.date).toLowerCase();if(keys.has(k))return false;keys.add(k);return true});state.events.push(...fresh);save();render();show(fresh.length?'Found '+fresh.length+' date'+(fresh.length===1?'':'s')+'. Review them before exporting.':'No new matching dates found. Try another type or add one manually.')}
     function pageLines(items){
       const rows=[];
