@@ -106,14 +106,34 @@
       }
       return out;
     }
-    function replaceExtracted(incoming,sources){const replacing=new Set(sources),keys=new Set(state.events.filter(e=>!replacing.has(e.source)).map(e=>(e.course+'|'+e.title+'|'+e.date).toLowerCase())),fresh=incoming.filter(e=>{const k=(e.course+'|'+e.title+'|'+e.date).toLowerCase();if(keys.has(k))return false;keys.add(k);return true});state.events=state.events.filter(e=>!replacing.has(e.source));state.events.push(...fresh);save();render();show(fresh.length?'Found '+fresh.length+' date'+(fresh.length===1?'':'s')+'. Check each source note before selecting.':'No matching dates found. Try another type or add one manually.')}
-    function pageLines(items){
-      const rows=[];
-      for(const item of items){if(!item.str||!item.str.trim())continue;const x=item.transform[4],y=item.transform[5];let row=rows.find(r=>Math.abs(r.y-y)<3);if(!row){row={y:y,items:[]};rows.push(row)}row.items.push({x:x,text:item.str})}
-      return rows.sort((a,b)=>b.y-a.y).map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.text).join(' ')).join('\n');
+    function rowDate(row){
+      const match=row.text.match(/^\s*(?:\d+|-)\s+(\d{1,2}\s*[/-]\s*\d{1,2}(?:\s*[/-]\s*\d{2,4})?)\b/);
+      return match?dateIn(match[1]):null;
     }
-    async function pdf(file){const lib=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages=[];for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n),content=await page.getTextContent();pages.push({number:n,text:pageLines(content.items)})}return pages}
-    async function extract(){const allowed=activeTypes(),text=$('#text').value.trim(),files=[...$('#files').files];if(!allowed.length)return show('Choose at least one event type first.');if(!text&&!files.length)return show('Add PDF files or paste some syllabus text first.');const button=$('#extract');button.disabled=true;button.textContent='Finding dates…';try{const all=[],sources=[];if(text){all.push(...parse(text,'Pasted syllabus',allowed));sources.push('Pasted syllabus')}for(const file of files){try{sources.push(file.name);for(const page of await pdf(file))all.push(...parse(page.text,file.name,allowed,page.number))}catch(e){show('Couldn’t read '+file.name+'. Try pasting its text instead.')}}replaceExtracted(all,sources)}finally{button.disabled=false;button.textContent='Find important dates'}}
+    function parsePdfRows(rows,source,allowed,pageNumber){
+      let course=source.replace(/\.pdf$/i,'')||'Uploaded syllabus',out=[];
+      const scheduleDates=rows.map(row=>Object.assign({},row,{scheduleDate:rowDate(row)})).filter(row=>row.scheduleDate);
+      for(const row of rows){
+        const cm=row.text.match(/\b[A-Z]{2,5}\s?-?\d{3,4}\b/);if(cm)course=cm[0].replace(/\s?-/g,' ');
+        const category=kind(row.text);if(!category||!allowed.includes(category))continue;
+        const inlineDate=dateIn(row.text);
+        const nearby=scheduleDates.filter(candidate=>candidate.y>row.y&&candidate.y-row.y<48).sort((a,b)=>a.y-b.y)[0];
+        const eventDate=inlineDate||nearby?.scheduleDate;
+        const title=titleFor(row.text,category),normalize=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+        if(!eventDate||(!inlineDate&&normalize(row.text)!==normalize(title)))continue;
+        const evidence=(pageNumber?'Page '+pageNumber+' — ':'')+(inlineDate?row.text:nearby.text+' · '+row.text);
+        out.push({id:newid(),course:course,title:title,date:eventDate.iso,category:category,source:source,evidence:evidence,selected:false});
+      }
+      return out;
+    }
+    function replaceExtracted(incoming,sources){const replacing=new Set(sources),keys=new Set(state.events.filter(e=>!replacing.has(e.source)).map(e=>(e.course+'|'+e.title+'|'+e.date).toLowerCase())),fresh=incoming.filter(e=>{const k=(e.course+'|'+e.title+'|'+e.date).toLowerCase();if(keys.has(k))return false;keys.add(k);return true});state.events=state.events.filter(e=>!replacing.has(e.source));state.events.push(...fresh);save();render();show(fresh.length?'Found '+fresh.length+' date'+(fresh.length===1?'':'s')+'. Check each source note before selecting.':'No matching dates found. Try another type or add one manually.')}
+    function pageRows(items){
+      const fragments=items.filter(item=>item.str&&item.str.trim()).map(item=>({x:item.transform[4],y:item.transform[5],width:item.width||0,height:item.height||0,text:item.str})).sort((a,b)=>b.y-a.y||a.x-b.x),rows=[];
+      for(const fragment of fragments){const row=rows.filter(candidate=>Math.abs(candidate.y-fragment.y)<2).sort((a,b)=>Math.abs(a.y-fragment.y)-Math.abs(b.y-fragment.y))[0];if(row)row.items.push(fragment);else rows.push({y:fragment.y,items:[fragment]})}
+      return rows.sort((a,b)=>b.y-a.y).map(row=>{const ordered=row.items.sort((a,b)=>a.x-b.x);let text='',previous=null;for(const item of ordered){const gap=previous?item.x-(previous.x+previous.width):0,join=previous&&gap<Math.max(1,item.height*.12);text+=(previous&&!join?' ':'')+item.text;previous=item}return {y:row.y,text:text.replace(/\s+/g,' ').trim()}});
+    }
+    async function pdf(file){const lib=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages=[];for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n),content=await page.getTextContent();pages.push({number:n,rows:pageRows(content.items)})}return pages}
+    async function extract(){const allowed=activeTypes(),text=$('#text').value.trim(),files=[...$('#files').files];if(!allowed.length)return show('Choose at least one event type first.');if(!text&&!files.length)return show('Add PDF files or paste some syllabus text first.');const button=$('#extract');button.disabled=true;button.textContent='Finding dates…';try{const all=[],sources=[];if(text){all.push(...parse(text,'Pasted syllabus',allowed));sources.push('Pasted syllabus')}for(const file of files){try{sources.push(file.name);for(const page of await pdf(file))all.push(...parsePdfRows(page.rows,file.name,allowed,page.number))}catch(e){show('Couldn’t read '+file.name+'. Try pasting its text instead.')}}replaceExtracted(all,sources)}finally{button.disabled=false;button.textContent='Find important dates'}}
     const ics=v=>String(v).replaceAll('\\','\\\\').replaceAll(';','\\;').replaceAll(',','\\,').replace(/\r?\n/g,'\\n');
     function download(){const events=state.events.filter(e=>e.selected);if(!events.length)return;const rows=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Syllabus Sync//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH'];for(const e of events){const end=new Date(e.date+'T00:00:00');end.setDate(end.getDate()+1);rows.push('BEGIN:VEVENT','UID:'+e.id+'@syllabussync','DTSTAMP:'+new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,''),'DTSTART;VALUE=DATE:'+e.date.replaceAll('-',''),'DTEND;VALUE=DATE:'+end.toISOString().slice(0,10).replaceAll('-',''),'SUMMARY:'+ics('['+TYPES[e.category].label.toUpperCase()+'] '+e.course+' — '+e.title),'DESCRIPTION:'+ics('Reviewed in Syllabus Sync. Source: '+(e.source||'manual entry')),'END:VEVENT')}rows.push('END:VCALENDAR');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\r\n')],{type:'text/calendar;charset=utf-8'}));a.download='syllabus-sync-important-dates.ics';a.click();URL.revokeObjectURL(a.href);show('Calendar downloaded. Import it into Google Calendar, Apple Calendar, or Outlook.')}
     $('#files').addEventListener('change',e=>{const names=[...e.target.files].map(f=>f.name);$('#file-list').textContent=names.length?names.length+' file'+(names.length===1?'':'s')+': '+names.join(', '):'No files selected yet.'});
