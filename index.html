@@ -88,14 +88,15 @@
       if(/\b(?:discuss|discussion|review|practice|prep(?:aration)?|q\s*&\s*a)\b/.test(v)&&/\b(final|exam|test|midterm)\b/.test(v))return null;
       if(/\b(presentation|presentations?)\b/.test(v))return'presentation';
       if(/\bfinal\s+(?:grade|self-assessment|assignment)\b/.test(v))return null;
-      if(/\b(?:remote\s+)?final\s+(?:exam|assessment)\b|\bfinal\b(?=\s*:|$)/.test(v))return'final';
+      if(/\b(?:remote\s+)?final\s+(?:exam|assessment)\b|\bexam\s*\d+\b.*\bfinal\b|\bfinal\b(?=\s*:|$)/.test(v))return'final';
       if(/\b(midterm|exam|test)\b/.test(v))return'exam';
       if(/\b(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?\b/.test(v))return'project';
-      if(/\b(?:engagement|project|paper|capstone)\b.*\b(?:due|deadline|proposal)\b/.test(v)||/\bcase\s+(?:due|deadline)\b/.test(v))return'project';
+      if(/\b(?:engagement|project|paper|capstone)\b.*\b(?:due|deadline|proposal)\b/.test(v)||/\bpaper\s+\d+\b.*\bno\s+class\b|\bno\s+class\b.*\bpaper\s+\d+\b/.test(v)||/\bcase\s+(?:due|deadline)\b/.test(v))return'project';
       return null;
     }
     function titleFor(line,category){
-      const patterns={exam:/\b(?:midterm\s+exam|exam\s*(?:#|no\.?)?\s*\d+|midterm|test\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?|engagement\s*\d*|(?:data\s+visualization\s+)?case|(?:(?:group|final|major)\s+)?(?:project|paper|capstone))\b/i,presentation:/\b(?:(?:group\s+)?project\s+)?presentations?(?:\s*[-–—:]\s*(?:day\s*)?\d+)?\b/i};
+      if(category==='final'){const numbered=line.match(/\bexam\s*(\d+)\b/i);if(numbered)return 'Exam '+numbered[1]+' (Final Exam)'}
+      const patterns={exam:/\b(?:midterm\s+exam|exam\s*(?:#|no\.?)?\s*\d+|midterm|test\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?|engagement\s*\d*|(?:data\s+visualization\s+)?case|(?:(?:group|final|major)\s+)?(?:project|paper\s*\d*|capstone))\b/i,presentation:/\b(?:(?:group\s+)?project\s+)?presentations?(?:\s*[-–—:]\s*(?:day\s*)?\d+)?\b/i};
       const match=line.match(patterns[category]);
       return (match?match[0]:'Important date').replace(/\s+(?:due|deadline|proposal)$/i,'').replace(/\s+/g,' ').trim();
     }
@@ -122,15 +123,15 @@
       const fallback=source.replace(/\.pdf$/i,'').replace(/[_-]+/g,' ').trim()||'Uploaded syllabus',rows=pages.slice(0,2).flatMap(page=>page.rows).slice(0,60);
       for(const row of rows){const match=row.text.match(/\b([A-Z]{2,5})\s*-?\s*(\d{3,4})\b\s*(?:[-–—:|]\s*|\s+)(.+)/);if(!match)continue;const code=match[1]+' '+match[2],title=match[3].replace(/^[\s–—-]+/,'').replace(/\b(?:course\s+syllabus|syllabus|fall|spring|summer|winter|section|sec\.)\b.*$/i,'').trim();if(title.length>3&&!/^(?:tentative\s+)?course\s+schedule/i.test(title))return code+' — '+title}const code=rows.map(row=>row.text.match(/\b([A-Z]{2,5})\s*-?\s*(\d{3,4})\b/)).find(Boolean);return code?code[1]+' '+code[2]:fallback;
     }
-    function rowDate(row,fallbackYear){return dateIn(row.text,fallbackYear)}
+    function rowDate(row,fallbackYear,rows){const direct=dateIn(row.text,fallbackYear);if(direct)return direct;const month=row.firstText?.match(/^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$/i);if(!month)return null;const day=rows.find(candidate=>candidate.y<row.y&&row.y-candidate.y<30&&Math.abs(candidate.firstX-row.firstX)<5&&/^\d{1,2}$/.test(candidate.firstText));return day?dateIn(month[1]+' '+day.firstText,fallbackYear):null}
     function parsePdfRows(rows,source,allowed,pageNumber,course,fallbackYear){
       let out=[];
-      const scheduleDates=rows.map(row=>Object.assign({},row,{scheduleDate:rowDate(row,fallbackYear)})).filter(row=>row.scheduleDate);
+      const scheduleDates=rows.map(row=>Object.assign({},row,{scheduleDate:rowDate(row,fallbackYear,rows)})).filter(row=>row.scheduleDate);
       for(const row of rows){
         const context=rows.filter(candidate=>Math.abs(candidate.y-row.y)<24).map(candidate=>candidate.text).join(' '),directCategory=kind(row.text),contextCategory=kind(context),category=directCategory||(contextCategory==='project'?'project':null);if(!category||!allowed.includes(category))continue;
-        const titleSource=category==='project'?context:row.text,inlineDate=dateIn(row.text,fallbackYear),previous=scheduleDates.filter(candidate=>candidate.y>row.y&&candidate.y-row.y<48).sort((a,b)=>a.y-b.y)[0],closest=scheduleDates.filter(candidate=>Math.abs(candidate.y-row.y)<30).sort((a,b)=>Math.abs(a.y-row.y)-Math.abs(b.y-row.y))[0],nearby=category==='project'?closest:previous,eventDate=inlineDate||nearby?.scheduleDate;
+        const titleSource=category==='project'?context:row.text,inlineDate=dateIn(row.text,fallbackYear),same=scheduleDates.find(candidate=>Math.abs(candidate.y-row.y)<2),previous=scheduleDates.filter(candidate=>candidate.y>row.y&&candidate.y-row.y<48).sort((a,b)=>a.y-b.y)[0],closest=scheduleDates.filter(candidate=>Math.abs(candidate.y-row.y)<30).sort((a,b)=>Math.abs(a.y-row.y)-Math.abs(b.y-row.y))[0],nearby=category==='project'?closest:(same||previous),eventDate=inlineDate||nearby?.scheduleDate;
         const title=titleFor(titleSource,category),normalize=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-        if(!eventDate||(!inlineDate&&category!=='project'&&normalize(row.text)!==normalize(title))||(category==='project'&&!normalize(context).includes(normalize(title))))continue;
+        if(!eventDate||(!inlineDate&&!same&&category!=='project'&&normalize(row.text)!==normalize(title))||(category==='project'&&!normalize(context).includes(normalize(title))))continue;
         const evidence=(pageNumber?'Page '+pageNumber+' — ':'')+(inlineDate?row.text:nearby.text+' · '+titleSource);
         out.push({id:newid(),course:course,title:title,date:eventDate.iso,category:category,source:source,evidence:evidence,selected:false});
       }
@@ -144,7 +145,7 @@
     function pageRows(items){
       const fragments=items.filter(item=>item.str&&item.str.trim()).map(item=>({x:item.transform[4],y:item.transform[5],width:item.width||0,height:item.height||0,text:item.str})).sort((a,b)=>b.y-a.y||a.x-b.x),rows=[];
       for(const fragment of fragments){const row=rows.filter(candidate=>Math.abs(candidate.y-fragment.y)<2).sort((a,b)=>Math.abs(a.y-fragment.y)-Math.abs(b.y-fragment.y))[0];if(row)row.items.push(fragment);else rows.push({y:fragment.y,items:[fragment]})}
-      return rows.sort((a,b)=>b.y-a.y).map(row=>{const ordered=row.items.sort((a,b)=>a.x-b.x);let text='',previous=null;for(const item of ordered){const gap=previous?item.x-(previous.x+previous.width):0,join=previous&&gap<Math.max(1,item.height*.12);text+=(previous&&!join?' ':'')+item.text;previous=item}return {y:row.y,text:text.replace(/\s+/g,' ').trim()}});
+      return rows.sort((a,b)=>b.y-a.y).map(row=>{const ordered=row.items.sort((a,b)=>a.x-b.x);let text='',previous=null;for(const item of ordered){const gap=previous?item.x-(previous.x+previous.width):0,join=previous&&gap<Math.max(1,item.height*.12);text+=(previous&&!join?' ':'')+item.text;previous=item}return {y:row.y,text:text.replace(/\s+/g,' ').trim(),firstText:ordered[0]?.text||'',firstX:ordered[0]?.x||0}});
     }
     async function pdf(file){const lib=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');lib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages=[];for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n),content=await page.getTextContent();pages.push({number:n,rows:pageRows(content.items)})}return pages}
     async function extract(){const allowed=activeTypes(),text=$('#text').value.trim(),files=[...$('#files').files];if(!allowed.length)return show('Choose at least one event type first.');if(!text&&!files.length)return show('Add PDF files or paste some syllabus text first.');const button=$('#extract');button.disabled=true;button.textContent='Finding dates…';try{const all=[],sources=[];if(text){all.push(...parse(text,'Pasted syllabus',allowed,undefined,textYear(text),textCourseName(text,'Pasted syllabus')));sources.push('Pasted syllabus')}for(const file of files){try{sources.push(file.name);const pages=await pdf(file),year=documentYear(pages),course=courseName(pages,file.name);for(const page of pages)all.push(...parsePdfRows(page.rows,file.name,allowed,page.number,course,year))}catch(e){show('Couldn’t read '+file.name+'. Try pasting its text instead.')}}replaceExtracted(all,sources)}finally{button.disabled=false;button.textContent='Find important dates'}}
