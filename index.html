@@ -42,11 +42,11 @@
         <label class="upload" for="files"><span class="upicon" aria-hidden="true">↥</span><strong>Choose PDF or Word files</strong><small>You can select more than one at once</small><input id="files" type="file" accept="application/pdf,.pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple></label>
         <p id="file-list" class="files" aria-live="polite">No files selected yet.</p><div class="or">or</div>
         <label for="text">Paste syllabus text</label><textarea id="text" placeholder="Example: ACCT 302 — Midterm 1: October 8&#10;Final exam: December 10"></textarea><button id="sample" class="sample" type="button">Use sample syllabus text instead</button>
-        <p class="filter-title">Pull out these dates</p><div id="types" class="choices"><label class="choice"><input type="checkbox" value="exam" checked>Exams &amp; midterms</label><label class="choice"><input type="checkbox" value="final" checked>Finals</label><label class="choice"><input type="checkbox" value="project" checked>Major projects</label><label class="choice"><input type="checkbox" value="presentation" checked>Presentations</label></div>
+        <p class="filter-title">Pull out these dates</p><div id="types" class="choices"><label class="choice"><input type="checkbox" value="exam" checked>Exams, midterms &amp; quizzes</label><label class="choice"><input type="checkbox" value="final" checked>Finals</label><label class="choice"><input type="checkbox" value="project" checked>Major projects &amp; papers</label><label class="choice"><input type="checkbox" value="presentation" checked>Presentations</label></div>
         <div class="buttons"><button id="extract" class="button primary" type="button">Find important dates</button><button id="reset" class="button secondary" type="button">Reset</button></div><p class="notice">This first version finds date-like lines in text-based PDFs. Always check an event against the syllabus before selecting it.</p><p id="saved-state" class="saved-state">Courses are saved only on this device and can be cleared with Reset.</p>
       </aside>
       <section class="panel review"><div class="review-head"><div><p class="eyebrow">Verify before calendar</p><h2>Important dates</h2><p>Check the source note under every event, then tick only the dates you have verified.</p></div><span id="count" class="count">0 events</span></div>
-        <div class="toolbar"><label class="choice"><input data-show="exam" type="checkbox" checked>Exams</label><label class="choice"><input data-show="final" type="checkbox" checked>Finals</label><label class="choice"><input data-show="project" type="checkbox" checked>Projects</label><label class="choice"><input data-show="presentation" type="checkbox" checked>Presentations</label><span class="spacer"></span><div id="class-actions" class="class-actions" aria-label="Select visible dates by class"></div><button id="clear-select" class="textbutton" type="button">Clear selection</button></div>
+        <div class="toolbar"><label class="choice"><input data-show="exam" type="checkbox" checked>Exams &amp; quizzes</label><label class="choice"><input data-show="final" type="checkbox" checked>Finals</label><label class="choice"><input data-show="project" type="checkbox" checked>Projects &amp; papers</label><label class="choice"><input data-show="presentation" type="checkbox" checked>Presentations</label><span class="spacer"></span><div id="class-actions" class="class-actions" aria-label="Select visible dates by class"></div><button id="clear-select" class="textbutton" type="button">Clear selection</button></div>
         <div id="duplicate-alerts" class="duplicate-alerts" hidden aria-live="polite"></div><div id="list" class="list" aria-live="polite"></div>
         <details class="manual"><summary>Add a date manually</summary><form id="manual" class="manual-form"><input id="course" required placeholder="Course (e.g. ACCT 302)" aria-label="Course"><input id="event-name" required placeholder="Event name" aria-label="Event name"><input id="date" required type="date" aria-label="Date"><select id="category" aria-label="Event type"><option value="exam">Exam / Midterm</option><option value="final">Final</option><option value="project">Major Project</option><option value="presentation">Presentation</option></select><button class="button secondary" type="submit">Add</button></form></details>
         <section id="preview" class="preview" hidden aria-live="polite"></section>
@@ -57,7 +57,7 @@
   </main><dialog id="source-dialog" class="source-dialog"><article><div class="source-dialog-head"><div><p class="eyebrow">Source inspection</p><h3 id="source-title">Syllabus source</h3><p id="source-subtitle"></p></div><button id="source-close" class="source-close" type="button" aria-label="Close source">×</button></div><div id="source-content"></div></article></dialog><div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script>
     const SAMPLE='ACCT 302 — Financial Accounting\nMidterm 1: October 8, 2026\nGroup Project Due: November 20, 2026\nFinal Exam: December 10, 2026\n\nBUS 342 — Organizational Behavior\nPresentation: October 21, 2026\nFinal Project Due: December 4, 2026\nFinal: December 15, 2026';
-    const TYPES={exam:{label:'Exam / Midterm',color:'#3766d4'},final:{label:'Final',color:'#7a48b8'},project:{label:'Major Project',color:'#e06a20'},presentation:{label:'Presentation',color:'#17845e'}};
+    const TYPES={exam:{label:'Exam / Quiz',color:'#3766d4'},final:{label:'Final',color:'#7a48b8'},project:{label:'Major Project',color:'#e06a20'},presentation:{label:'Presentation',color:'#17845e'}};
     const state={events:[],visible:new Set(Object.keys(TYPES)),documents:new Map(),qaCourse:'',duplicateNotes:[],savedAt:null}; const $=s=>document.querySelector(s); let timer;
     const newid=()=>Date.now()+'-'+Math.random().toString(16).slice(2);
     const esc=v=>String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
@@ -121,10 +121,11 @@
     }
     function dateNearEvent(line,category,fallbackYear){
       const dates=datesIn(line,fallbackYear);if(!dates.length)return null;
-      const anchors={exam:/\b(?:midterm(?:\s+exam)?|exam\s*(?:#|no\.?)?\s*\d+|test\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:team\s+(?:build\s+)?(?:project\s+)?milestone\s*\d+|team\s+charter\s+checkpoint|take[-\s]?home\s+case(?:-based)?\s+audit|individual\s+friday\s+build\s+\d+|final\s+team\s+build\s+(?:project\s+)?deliverable|(?:first|second|1st|2nd)\s+half\s+of\s+(?:the\s+)?group\s+project|(?:group|major|final|capstone|research|term|team)\s+project(?:\s+(?:proposal|milestone))?|in[-\s]?class\s+(?:reading\s+)?analysis(?:\s+(?:essay|writing))?)\b/i,presentation:/\b(?:(?:group\s+)?project\s+presentations?|final\s+demo\s+day\s*\d*)\b/i};
+      const anchors={exam:/\b(?:midterm(?:\s+exam)?|exam\s*(?:#|no\.?)?\s*\d+|test\s*\d*|quiz\s*(?:#|no\.?)?\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:critical\s+analysis\s+paper(?:\s*#?\s*\d+)?|team\s+(?:build\s+)?(?:project\s+)?milestone\s*\d+|team\s+charter\s+checkpoint|take[-\s]?home\s+case(?:-based)?\s+audit|individual\s+friday\s+build\s+\d+|final\s+team\s+build\s+(?:project\s+)?deliverable|(?:first|second|1st|2nd)\s+half\s+of\s+(?:the\s+)?group\s+project|(?:group|major|final|capstone|research|term|team)\s+project(?:\s+(?:proposal|milestone))?|in[-\s]?class\s+(?:reading\s+)?analysis(?:\s+(?:essay|writing))?)\b/i,presentation:/\b(?:(?:group\s+)?project\s+presentations?|final\s+demo\s+day\s*\d*)\b/i};
       const anchor=line.match(anchors[category]);if(!anchor)return dates[0].date;
       const after=dates.filter(item=>item.index>=anchor.index+anchor[0].length);return (after[0]||dates.filter(item=>item.end<=anchor.index).pop()||dates[0]).date;
     }
+    function dueDateAfterEvent(line,fallbackYear){const signals=[...line.matchAll(/\b(?:hard\s+shutdown|due|deadline|submit(?:ted| by)?|close[sd]?)\b/gi)];for(const signal of signals){const date=datesIn(line.slice(signal.index),fallbackYear)[0]?.date;if(date)return date}return null}
     const needsConfirmation=line=>/\b(?:tentative|hopefully|subject\s+to\s+change|pending(?:\s+approval)?|not\s+approved)\b/i.test(line);
     const formatPreviewDate=date=>new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(date+'T00:00:00Z'));
     function kind(line){
@@ -134,14 +135,14 @@
       if(/\b(?:presentation|presentations?|final\s+demo\s+day)\b/.test(v))return'presentation';
       if(/\bfinal\s+(?:grade|self-assessment|assignment)\b/.test(v))return null;
       if(/\b(?:remote\s+)?final\s+(?:exam|assessment)\b|\bexam\s*\d+\b.*\b(?:final|covers\s+material\s+after)\b|\bfinal\b(?=\s*:|$)/.test(v))return'final';
-      if(/\b(midterm|exam|test)\b/.test(v))return'exam';
-      if(/\b(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?\b/.test(v))return'project';
+      if(/\b(midterm|exam|test|quiz)\b/.test(v))return'exam';
+      if(/\b(?:critical\s+analysis\s+paper|in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?\b/.test(v))return'project';
       if(/\b(?:team\s+(?:build\s+)?(?:project\s+)?milestone\s*\d+|team\s+charter\s+checkpoint|take[-\s]?home\s+case(?:-based)?\s+audit|individual\s+friday\s+build\s+\d+|final\s+team\s+build\s+(?:project\s+)?deliverable|(?:first|second|1st|2nd)\s+half\s+of\s+(?:the\s+)?group\s+project|(?:major|final|capstone|research|term|team)\s+project(?:\s+(?:proposal|milestone))?|group\s+project\s+(?:due|deadline|proposal|milestone))\b/.test(v))return'project';
       return null;
     }
     function titleFor(line,category){
       if(category==='final'){const numbered=line.match(/\bexam\s*(\d+)\b/i);if(numbered)return 'Exam '+numbered[1]+' (Final Exam)'}
-      const patterns={exam:/\b(?:midterm\s+(?:case-based\s+design\s+audit|exam)|exam\s*(?:#|no\.?)?\s*\d+|midterm|test\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:course\s+onboarding\s+tasks|team\s+(?:build\s+)?(?:project\s+)?milestone\s*\d+|team\s+charter\s+checkpoint|take[-\s]?home\s+case(?:-based)?\s+audit|individual\s+friday\s+build\s+\d+|final\s+team\s+build\s+(?:project\s+)?deliverable|(?:turn\s+in\s+)?(?:first|second|1st|2nd)\s+half\s+of\s+(?:the\s+)?group\s+project|(?:group|major|final|capstone|research|term|team)\s+project(?:\s+(?:proposal|milestone))?|(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?)\b/i,presentation:/\b(?:(?:group\s+)?project\s+presentations?(?:\s*[-–—:]\s*(?:day\s*)?\d+)?|final\s+demo\s+day\s*\d*)\b/i};
+      const patterns={exam:/\b(?:midterm\s+(?:case-based\s+design\s+audit|exam)|exam\s*(?:#|no\.?)?\s*\d+|midterm|test\s*\d*|quiz\s*(?:#|no\.?)?\s*\d*)\b/i,final:/\b(?:remote\s+)?final(?:\s+(?:exam|assessment))?\b/i,project:/\b(?:critical\s+analysis\s+paper(?:\s*#?\s*\d+)?|course\s+onboarding\s+tasks|team\s+(?:build\s+)?(?:project\s+)?milestone\s*\d+|team\s+charter\s+checkpoint|take[-\s]?home\s+case(?:-based)?\s+audit|individual\s+friday\s+build\s+\d+|final\s+team\s+build\s+(?:project\s+)?deliverable|(?:turn\s+in\s+)?(?:first|second|1st|2nd)\s+half\s+of\s+(?:the\s+)?group\s+project|(?:group|major|final|capstone|research|term|team)\s+project(?:\s+(?:proposal|milestone))?|(?:in[-\s]?class\s+(?:reading\s+)?analysis|reading\s+analysis)(?:\s+(?:essay|writing))?)\b/i,presentation:/\b(?:(?:group\s+)?project\s+presentations?(?:\s*[-–—:]\s*(?:day\s*)?\d+)?|final\s+demo\s+day\s*\d*)\b/i};
       const match=line.match(patterns[category]);
       const result=(match?match[0]:'Important date').replace(/\s+(?:due|deadline|proposal)$/i,'').replace(/\s+/g,' ').trim();
       return category==='project'&&/final\s+team\s+build\s+(?:project\s+)?deliverable/i.test(result)?'Final Team Build Deliverable':result;
@@ -149,16 +150,17 @@
     function parse(text,source,allowed,pageNumber,fallbackYear,courseOverride){
       let course=courseOverride||source.replace(/\.pdf$/i,'')||'Uploaded syllabus',out=[],lastScheduleDate=null,lastScheduleLine='';
       const lines=text.split(/\r?\n/);
-      for(const raw of lines){
+      for(let index=0;index<lines.length;index++){
+        const raw=lines[index],following=lines.slice(index+1,index+3).map(value=>value.replace(/\s+/g,' ').trim()).filter(Boolean).join(' ');
         const line=raw.replace(/\s+/g,' ').trim(),cm=line.match(/\b[A-Z]{2,5}\s?-?\d{3,4}\b/),date=dateIn(line,fallbackYear);
         if(cm&&!courseOverride)course=cm[0].replace(/\s?-/g,' ');
         if(/^(?:\d+|-)\s+\d{1,2}\s*[/-]\s*\d{1,2}\b/.test(line)&&date){lastScheduleDate=date;lastScheduleLine=line}
-        const category=kind(line),title=category?titleFor(line,category):'',eventDate=(category?dateNearEvent(line,category,fallbackYear):date)||lastScheduleDate;
+        const category=kind(line),title=category?titleFor(line,category):'',inlineDue=category?dueDateAfterEvent(line,fallbackYear):null,followingDue=category&&!inlineDue&&!date?dueDateAfterEvent(following,fallbackYear):null,eventDate=(category?(inlineDue||followingDue||dateNearEvent(line,category,fallbackYear)):date)||lastScheduleDate;
         if(!category||!eventDate||!allowed.includes(category))continue;
         const normalize=value=>value.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-        if(!date&&normalize(line)!==normalize(title))continue;
-        const evidence=(pageNumber?'Page '+pageNumber+' — ':'')+(date?line:lastScheduleLine+' · '+line);
-        const tentative=needsConfirmation(line),inferred=!date,requiresConfirmation=tentative||inferred;out.push({id:newid(),course:course,title:title,date:eventDate.iso,category:category,source:source,evidence:evidence,needsReview:requiresConfirmation,confidence:requiresConfirmation?'needs-confirmation':'high',selected:false});
+        if(!date&&!inlineDue&&!followingDue&&normalize(line)!==normalize(title))continue;
+        const evidence=(pageNumber?'Page '+pageNumber+' — ':'')+(followingDue?line+' · '+following:line);
+        const tentative=needsConfirmation(line)||needsConfirmation(following),inferred=!date&&!inlineDue&&!followingDue,requiresConfirmation=tentative||inferred;out.push({id:newid(),course:course,title:title,date:eventDate.iso,category:category,source:source,evidence:evidence,needsReview:requiresConfirmation,confidence:requiresConfirmation?'needs-confirmation':'high',selected:false});
       }
       return out;
     }
@@ -174,7 +176,7 @@
     function rowDate(row,fallbackYear,rows){const direct=dateIn(row.text,fallbackYear);if(direct)return direct;const month=row.firstText?.match(/^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?$/i);if(!month)return null;const day=rows.find(candidate=>candidate.y<row.y&&row.y-candidate.y<30&&Math.abs(candidate.firstX-row.firstX)<5&&/^\d{1,2}$/.test(candidate.firstText));return day?dateIn(month[1]+' '+day.firstText,fallbackYear):null}
     function parsePdfRows(rows,source,allowed,pageNumber,course,fallbackYear){
       let out=[];
-      const scheduleDates=rows.map(row=>Object.assign({},row,{scheduleDate:rowDate(row,fallbackYear,rows)})).filter(row=>row.scheduleDate&&!/\b(?:due|deadline|submit|by)\b/i.test(row.text));
+      const scheduleDates=rows.map(row=>Object.assign({},row,{scheduleDate:rowDate(row,fallbackYear,rows)})).filter(row=>row.scheduleDate);
       const classified=rows.map(row=>({row,category:kind(row.text)})),dueRows=rows.map(row=>({row,date:/\b(?:due|deadline)\b/i.test(row.text)?dateIn(row.text,fallbackYear):null})).filter(item=>item.date);
       for(const {row,category} of classified){
         if(!category||!allowed.includes(category))continue;
